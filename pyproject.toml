@@ -1,0 +1,37 @@
+﻿[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "vision-bridge-mcp"
+version = "1.0.0"
+description = "Multimodal vision bridge for single-modal AI agents — give DeepSeek/Claude/Codex the ability to see images via Qwen or OpenAI"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.0.0",
+]
+keywords = ["mcp", "model-context-protocol", "vision", "multimodal", "qwen", "openai", "ai-agent"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[project.urls]
+Homepage = "https://github.com/your-username/vision-bridge"
+Repository = "https://github.com/your-username/vision-bridge"
+Issues = "https://github.com/your-username/vision-bridge/issues"
+
+[project.scripts]
+vision-bridge = "vision_bridge.server:main"
+vision-cli = "vision_bridge.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
