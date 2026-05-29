@@ -194,7 +194,7 @@ def _mime_type(path):
 
 
 
-def _api(path, body, timeout=80):
+def _api(path, body, timeout=90):
 
     url = f"{CFG['base']}{path}"
 
@@ -335,7 +335,6 @@ _MAX_BODIES = 50
 _MAX_CODE = 3000
 
 def _sanitize_custom_code(code):
-    """Validate custom cadquery code. Returns (is_safe, reason)."""
     if not code or not isinstance(code, str):
         return False, "empty or non-string code"
     if len(code) > _MAX_CODE:
@@ -348,7 +347,6 @@ def _sanitize_custom_code(code):
     return True, "ok"
 
 def _validate_json_schema(parsed):
-    """Validate parsed JSON structure. Returns (is_valid, warnings)."""
     w = []
     if not isinstance(parsed, dict):
         return False, ["root not a JSON object"]
@@ -390,7 +388,6 @@ def _validate_json_schema(parsed):
     return True, w
 
 def _safety_wrap(parsed_json):
-    """Apply all safety layers. Returns (clean_json, warnings)."""
     if parsed_json is None:
         return None, ["JSON parse returned None"]
     ok, w = _validate_json_schema(parsed_json)
@@ -531,44 +528,17 @@ SYSTEM_PROMPT = (
 
 
 
-STRUCTURED_PROMPT = (
-    "\n\n"
-    "=== CSG + CODE OUTPUT ===\n"
-    "Output ONLY this JSON. Express the part as additive/subtractive bodies.\n"
-    "When the type list below cannot express a shape, use custom with cadquery code.\n"
-    "{\n"
-    "  \"type\":\"engineering_drawing|photo|screenshot|other\","
-    "\"description\":\"...\","
-    "\"drawing_type\":\"mechanical|pcb|architectural|p_and_id|...\","
-    "\"standard\":\"ISO|ANSI|JIS|GOST|DIN|unknown|null\","
-    "\"unit\":\"mm|inch|unknown\","
-    "\"coordinate_system\":{\"origin\":\"...\",\"x\":\"width\",\"y\":\"depth\",\"z\":\"height\"},\"
-    "\"bodies\":[\n"
-    "  // ADDITIVE primitives: box, cylinder, sphere, cone, wedge, torus\n"
-    "  // ADVANCED additive: extrude(profile,params,depth), revolve(profile,params,axis,degrees),\n"
-    "  //                     sweep(path,profile,params), loft(sections)\n"
-    "  // SUBTRACTIVE: subtract(target, tool_body)\n"
-    "  // EDGE: fillet(target,edges,radius), chamfer(target,edges,distance)\n"
-    "  // ARRAY: pattern(body_id, count, direction, spacing)\n"
-    "  // ESCAPE HATCH: custom({\"code\":\"cadquery Python string\"})\n"
-    "  //   qwen3.6-plus knows cadquery API and can write code for threads, gears, springs, etc.\n"
-    "  {\"id\":\"base\",\"type\":\"box\",\"params\":{\"width\":100,\"depth\":40,\"height\":10},\"position\":{\"x\":0,\"y\":0,\"z\":0}},\"
-    "  {\"id\":\"bore\",\"type\":\"subtract\",\"target\":\"hub\",\"tool\":{\"type\":\"cylinder\",\"params\":{\"radius\":10,\"height\":50},\"position\":{\"x\":0,\"y\":0,\"z\":25}}}\n"
-    "  ],\n"
-    "  \"material\":null,\"tolerances\":null,\"surface_finish\":null,\"
-    "\"title_block\":{\"part_name\":null,\"drawing_number\":null,\"revision\":null,\"scale\":null},\"
-    "\"confidence\":\"high|medium|low\",\"warnings\":[]\n"
-    "}\n\n"
-    "RULES:\n"
-    "1. Start from LARGEST additive body. Build outward, top-down.\n"
-    "2. Use subtract for ALL holes, bores, pockets, cuts, grooves.\n"
-    "3. Use revolve for shafts/flanges, sweep for pipes, loft for transitions.\n"
-    "4. For threads, gears, springs, freeform: type=custom with cadquery code.\n"
-    "5. position=center of body. Origin per coordinate_system.\n"
-    "6. Be CONCISE. Prefer primitives. custom only when needed.\n"
-    "For non-technical: {\"type\":\"photo|screenshot|other\",\"description\":\"...\",\"confidence\":\"...\",\"warnings\":[]}\n"
-    "CRITICAL: Pure JSON. No markdown. No extra text."
-)
+STRUCTURED_PROMPT = ""
+def _load_structured_prompt():
+    global STRUCTURED_PROMPT
+    fp = pathlib.Path(__file__).resolve().parent / "prompt_csg.txt"
+    if fp.exists():
+        STRUCTURED_PROMPT = fp.read_text(encoding="utf-8")
+    else:
+        STRUCTURED_PROMPT = "Describe this image following the OUTPUT FORMAT rules."
+
+_load_structured_prompt()
+
 
 
 
