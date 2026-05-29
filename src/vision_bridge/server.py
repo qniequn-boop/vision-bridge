@@ -1,7 +1,5 @@
 ﻿"""vision-bridge MCP — multimodal bridge for text-only AI agents
 
-
-
 Give single-modal AI (DeepSeek, Claude, Codex) vision via Qwen/OpenAI.
 
 """
@@ -14,11 +12,7 @@ from urllib.error import HTTPError, URLError
 
 from mcp.server.fastmcp import FastMCP
 
-
-
 mcp = FastMCP("vision-bridge")
-
-
 
 # ═══════════════════════════════════════════════════════
 
@@ -36,11 +30,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 CACHE_DIR.mkdir(exist_ok=True)
 
-
-
 PROVIDER = os.getenv("VISION_PROVIDER", "qwen")
-
-
 
 PROVIDERS = {
 
@@ -110,8 +100,6 @@ PROVIDERS = {
 
 CFG = PROVIDERS.get(PROVIDER, PROVIDERS["qwen"])
 
-
-
 # ═══════════════════════════════════════════════════════
 
 def _key():
@@ -122,13 +110,9 @@ def _key():
 
     return k
 
-
-
 def _resolve(name):
 
     return CFG["aliases"].get(name, name)
-
-
 
 def _spec(name):
 
@@ -136,21 +120,15 @@ def _spec(name):
 
     return CFG["models"].get(mid, {"caps":["chat","vision"],"ctx":32000,"in_m":0,"out_m":0})
 
-
-
 def _estimate_cost(mid, itok, otok):
 
     s = _spec(mid)
 
     return (itok * s.get("in_m",0) + otok * s.get("out_m",0)) / 1e6
 
-
-
 def _cache_key(*args):
 
     return hashlib.sha256(json.dumps(args,sort_keys=True).encode()).hexdigest()[:16]
-
-
 
 def _cache_rw(key, val=None):
 
@@ -168,8 +146,6 @@ def _cache_rw(key, val=None):
 
     cf.write_text(json.dumps(val))
 
-
-
 def _audit(**e):
 
     e.setdefault("ts", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
@@ -182,8 +158,6 @@ def _audit(**e):
 
     except: pass
 
-
-
 def _mime_type(path):
 
     ext = os.path.splitext(path)[1].lower()
@@ -191,8 +165,6 @@ def _mime_type(path):
     return {"png":"image/png","jpg":"image/jpeg","jpeg":"image/jpeg",
 
             "webp":"image/webp","gif":"image/gif","bmp":"image/bmp"}.get(ext,"image/jpeg")
-
-
 
 def _api(path, body, timeout=90):
 
@@ -254,46 +226,6 @@ def _api(path, body, timeout=90):
 
     raise RuntimeError("[TIMEOUT] All retries exhausted")
 
-
-
-
-
-def _parse_json_response(raw):
-
-    """Try to extract JSON from model response. Fallback gracefully."""
-
-    if not raw:
-
-        return None
-
-    text = raw.strip()
-
-    if text.startswith("```"):
-
-        text = re.sub(r"^```(?:json)?\s*", "", text)
-
-        text = re.sub(r"\s*```$", "", text)
-
-        text = text.strip()
-
-    start = text.find("{")
-
-    end = text.rfind("}")
-
-    if start >= 0 and end > start:
-
-        try:
-
-            return json.loads(text[start:end+1])
-
-        except json.JSONDecodeError:
-
-            pass
-
-    return None
-
-
-
 def _safe_content(r):
 
     """Safely extract content from API response. Never crashes."""
@@ -320,93 +252,12 @@ def _safe_content(r):
 
         return f"[ERROR extracting response: {e}]"
 
-
-
 # ═══════════════════════════════════════════════════════
 
-
-
 # ============================================================
-#  SAFETY LAYERS
-# ============================================================
-_BLOCKED = ["__import__","eval(","exec(","open(","os.","sys.","subprocess","shutil","importlib","compile(","globals()","locals()","getattr(","setattr(","base64","pickle","marshal","ctypes"]
-_VALID_TYPES = {"box","cylinder","sphere","cone","wedge","torus","extrude","revolve","sweep","loft","subtract","fillet","chamfer","pattern","custom"}
-_MAX_BODIES = 50
-_MAX_CODE = 3000
-
-def _sanitize_custom_code(code):
-    if not code or not isinstance(code, str):
-        return False, "empty or non-string code"
-    if len(code) > _MAX_CODE:
-        return False, f"code too long ({len(code)} > {_MAX_CODE})"
-    for p in _BLOCKED:
-        if p in code:
-            return False, f"blocked pattern: {p}"
-    if "cadquery" not in code and "cq" not in code and "Workplane" not in code:
-        return False, "must reference cadquery"
-    return True, "ok"
-
-def _validate_json_schema(parsed):
-    w = []
-    if not isinstance(parsed, dict):
-        return False, ["root not a JSON object"]
-    pt = parsed.get("type","")
-    if pt in ("photo","screenshot","other",None):
-        return True, []
-    bodies = parsed.get("bodies")
-    if bodies is None:
-        return True, ["no bodies field"]
-    if not isinstance(bodies, list):
-        return False, ["bodies must be an array"]
-    if len(bodies) > _MAX_BODIES:
-        w.append(f"truncated bodies {len(bodies)} -> {_MAX_BODIES}")
-        parsed["bodies"] = bodies[:_MAX_BODIES]
-        bodies = parsed["bodies"]
-    for i, body in enumerate(bodies):
-        if not isinstance(body, dict):
-            w.append(f"body[{i}] not object, removing")
-            bodies[i] = None; continue
-        bt = body.get("type","")
-        if bt not in _VALID_TYPES:
-            w.append(f"body[{i}]({body.get('id','?')}): unknown type '{bt}'")
-        if "id" not in body:
-            w.append(f"body[{i}] auto-id")
-            body["id"] = f"body_{i}"
-        params = body.get("params",{})
-        if isinstance(params, dict):
-            for k, v in params.items():
-                if isinstance(v,(int,float)) and v < 0:
-                    w.append(f"body[{i}]({body['id']}).{k}={v} negative")
-        if bt == "custom":
-            safe, reason = _sanitize_custom_code(body.get("code",""))
-            if not safe:
-                w.append(f"body[{i}]({body['id']}) custom REJECTED: {reason}")
-                body["code"] = "# REJECTED: " + reason
-    parsed["bodies"] = [b for b in bodies if b is not None]
-    if not isinstance(parsed.get("coordinate_system"), dict):
-        w.append("coordinate_system missing")
-    return True, w
-
-def _safety_wrap(parsed_json):
-    if parsed_json is None:
-        return None, ["JSON parse returned None"]
-    ok, w = _validate_json_schema(parsed_json)
-    if not ok:
-        return None, w
-    if parsed_json.get("bodies"):
-        parsed_json.setdefault("warnings",[])
-        parsed_json["warnings"].extend(w)
-        parsed_json["_safety"] = {"validated":True,"body_count":len(parsed_json["bodies"]),"issues":len(w)}
-    return parsed_json, w
-
-
 #  TOOLS
 
 # ═══════════════════════════════════════════════════════
-
-
-
-
 
 SYSTEM_PROMPT = (
 
@@ -520,30 +371,7 @@ SYSTEM_PROMPT = (
 
 )
 
-
-
-
-
-
-
-
-
-STRUCTURED_PROMPT = ""
-def _load_structured_prompt():
-    global STRUCTURED_PROMPT
-    fp = pathlib.Path(__file__).resolve().parent / "prompt_csg.txt"
-    if fp.exists():
-        STRUCTURED_PROMPT = fp.read_text(encoding="utf-8")
-    else:
-        STRUCTURED_PROMPT = "Describe this image following the OUTPUT FORMAT rules."
-
-_load_structured_prompt()
-
-
-
-
-
-def _make_prompt(user_question="", output_format="auto"):
+def _make_prompt(user_question=""):
 
     """Combine expert system prompt with user's specific question.
 
@@ -583,11 +411,9 @@ def _make_prompt(user_question="", output_format="auto"):
 
     return base + "\n\nDescribe this image completely."
 
-
-
 @mcp.tool()
 
-def analyze_image(image_path: str, question: str = "", model: str = "vision", format: str = "auto") -> str:
+def analyze_image(image_path: str, question: str = "", model: str = "vision") -> str:
 
     """Analyze image with vision AI. Supports engineering drawings, screenshots, photos.
 
@@ -605,8 +431,6 @@ def analyze_image(image_path: str, question: str = "", model: str = "vision", fo
 
         return f"[CAPABILITY] {model_id} lacks vision capability"
 
-
-
     # cache
 
     ck = _cache_key("analyze", image_path, question, model_id)
@@ -620,8 +444,6 @@ def analyze_image(image_path: str, question: str = "", model: str = "vision", fo
                costUsd=0, latencyMs=int((time.time()-t0)*1000), cached=True)
 
         return cached["content"]
-
-
 
     # read
 
@@ -647,8 +469,6 @@ def analyze_image(image_path: str, question: str = "", model: str = "vision", fo
 
         return f"[READ_ERROR] {e}"
 
-
-
     # cost cap check
 
     max_cost = float(os.getenv("VISION_MAX_COST_USD", "0.50"))
@@ -659,11 +479,9 @@ def analyze_image(image_path: str, question: str = "", model: str = "vision", fo
 
         return f"[COST_CAP] Estimated ${est_cost:.4f} exceeds limit ${max_cost:.2f}. Set VISION_MAX_COST_USD higher."
 
-
-
     # api call
 
-    prompt = _make_prompt(question, format)
+    prompt = _make_prompt(question)
 
     body = {
 
@@ -681,8 +499,6 @@ def analyze_image(image_path: str, question: str = "", model: str = "vision", fo
 
     }
 
-
-
     try:
 
         r = _api("/compatible-mode/v1/chat/completions", body, timeout=90)
@@ -697,8 +513,6 @@ def analyze_image(image_path: str, question: str = "", model: str = "vision", fo
 
         return str(e)
 
-
-
     # Try structured JSON parsing for json/auto modes
 
     parsed_json = None
@@ -706,8 +520,6 @@ def analyze_image(image_path: str, question: str = "", model: str = "vision", fo
     if format in ("json", "auto"):
 
         parsed_json = _parse_json_response(content)
-
-
 
     in_tok = r.get("usage",{}).get("prompt_tokens", 500)
 
@@ -725,8 +537,6 @@ def analyze_image(image_path: str, question: str = "", model: str = "vision", fo
 
     total_ms = int((time.time()-t0)*1000)
 
-
-
     if content.startswith("[ERROR:") or content.startswith("[WARNING:"):
 
         pass  # never cache error/warning responses
@@ -738,8 +548,6 @@ def analyze_image(image_path: str, question: str = "", model: str = "vision", fo
     _audit(tool="analyze_image", model=model_id, inputTokens=in_tok, outputTokens=out_tok,
 
            costUsd=round(cost,6), latencyMs=total_ms, cached=False)
-
-
 
     # Build output
 
@@ -799,8 +607,6 @@ def qwen_chat(prompt: str, model: str = "fast", system: str = "") -> str:
 
         return str(e)
 
-
-
 @mcp.tool()
 
 def qwen_embed(text: str, model: str = "embed") -> str:
@@ -820,8 +626,6 @@ def qwen_embed(text: str, model: str = "embed") -> str:
     except RuntimeError as e:
 
         return str(e)
-
-
 
 @mcp.tool()
 
@@ -846,8 +650,6 @@ def list_models() -> str:
         lines.append(f"  {m:30s} [{caps:15s}] ctx:{ctx}")
 
     return "\n".join(lines)
-
-
 
 @mcp.tool()
 
@@ -891,15 +693,11 @@ def audit_log(lines: int = 20) -> str:
 
     return "\n".join(out)
 
-
-
 def main():
 
     """Entry point for vision-bridge MCP server."""
 
     mcp.run()
-
-
 
 if __name__ == "__main__":
 
