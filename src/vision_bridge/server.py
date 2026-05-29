@@ -227,49 +227,55 @@ SYSTEM_PROMPT = (
 
 STRUCTURED_PROMPT = (
     "\n\n"
-    "=== CONSTRUCTIVE SOLID GEOMETRY (CSG) OUTPUT ===\n"
-    "Output ONLY this JSON. Express the part as additive/subtractive bodies.\n"
+    "=== CSG + CODE OUTPUT ===\n"
+    "Output ONLY this JSON. Build the part from bodies. "
+    "When the type list below cannot express a shape, use type=custom with raw cadquery Python code.\n"
     "{\n"
     '  "type":"engineering_drawing|photo|screenshot|other",'
     '"description":"...",'
-    '"drawing_type":"mechanical|pcb|architectural|p_and_id|electrical|hydraulic|'
-    'welding|casting|sheet_metal|isometric|hand_sketch|scanned|physical_photo|null",'
+    '"drawing_type":"mechanical|pcb|architectural|p_and_id|...",'
     '"standard":"ISO|ANSI|JIS|GOST|DIN|unknown|null",'
-    '"scale":"...",'
     '"unit":"mm|inch|unknown",'
-    '"coordinate_system":{"origin":"bottom_center|bottom_left|part_center|...",'
-    '"x_axis_description":"width","y_axis_description":"depth",'
-    '"z_axis_description":"height/up"},'
-    '"bodies":[\n'
-    '  // PRIMITIVES: type=box|cylinder|sphere|cone|wedge\n'
-    '  // box: {"width","depth","height"}\n'
-    '  // cylinder: {"radius","height"}  (axis=z by default)\n'
-    '  // sphere: {"radius"}\n'
-    '  // cone: {"radius_bottom","radius_top","height"}\n'
+    '"coordinate_system":{"origin":"bottom_center|...",'
+    '"x":"width","y":"depth","z":"height"},'
+    '"bodies":['
+    "  // === ADDITIVE (solid material) ===\n"
+    '  // box:      {"width","depth","height"}\n'
+    '  // cylinder: {"radius","height"}\n'
+    '  // sphere:   {"radius"}\n'
+    '  // cone:     {"radius_bottom","radius_top","height"}\n'
+    '  // wedge:    {"width","depth","height"}\n'
+    '  // torus:    {"radius_ring","radius_tube"}\n'
+    '  // extrude:  {"profile":"rectangle|circle|triangle|polygon","profile_params":{...},"depth":N}\n'
+    '  // revolve:  {"profile":"rectangle|circle|triangle|sketch","profile_params":{...},"axis":"x|y|z","degrees":360}\n'
+    '  // sweep:    {"path":[[x,y,z],...],"profile":"circle|rectangle","profile_params":{...}}\n'
+    '  // loft:     {"sections":[{"shape":"circle","params":{"radius":N},"z":0}, ...]}\n'
+    "  // === SUBTRACTIVE (cuts/voids) ===\n"
+    '  // subtract:{target:"body_id","tool":{...body...}}\n'
+    "  // === EDGE FINISH ===\n"
+    '  // fillet:   {"target":"body_id","edges":"all|top|bottom|...","radius":N}\n'
+    '  // chamfer:  {"target":"body_id","edges":"all|...","distance":N}\n'
+    "  // === PATTERN ===\n"
+    '  // pattern:  {"body_id":"...","count":N,"direction":"x|y|z","spacing":N}\n'
+    "  // === ESCAPE HATCH (for ANY shape the list cannot express) ===\n"
+    '  // custom:   {"code":"valid cadquery Python code as a single string"}\n'
+    "  //   Example: {\"id\":\"helix_spring\",\"type\":\"custom\","
+    '"code":"import cadquery as cq; spring=cq.Workplane(\\"XZ\\")'
+    '. parametricCurve(...).pipe(...).val()"}\n'
+    '  //   The code MUST be a self-contained expression that builds ONE solid.\n'
+    "  //   Use cadquery.Workplane, cq.Solid, cq.Shape, etc.\n'
     '  {\n'
-    '    "id":"unique_name",\n'
+    '    "id":"base",\n'
     '    "type":"box",\n'
     '    "params":{"width":100,"depth":40,"height":10},\n'
-    '    "position":{"x":0,"y":0,"z":0},\n'
-    '    "rotation":{"axis":"z|y|x","degrees":0}\n'
+    '    "position":{"x":0,"y":0,"z":0}\n'
     '  },\n'
-    '  // BOOLEAN: type=subtract|union|intersect\n'
     '  {\n'
-    '    "id":"hole_1",\n'
+    '    "id":"bore",\n'
     '    "type":"subtract",\n'
-    '    "target":"base_plate",\n'
-    '    "tool":{"type":"cylinder","params":{"radius":5,"height":10},\n'
-    '           "position":{"x":10,"y":20,"z":0}},\n'
-    '    "pattern":{"count":2,"direction":"x","spacing":80}\n'
-    '  },\n'
-    '  // EXTRUSION: type=extrude (2D profile -> 3D)\n'
-    '  {\n'
-    '    "id":"rib",\n'
-    '    "type":"extrude",\n'
-    '    "profile":"triangle|rectangle|custom_polygon",\n'
-    '    "profile_params":{"base":15,"height":62},\n'
-    '    "thickness":8,\n'
-    '    "position":{"x":15,"y":16,"z":10}\n'
+    '    "target":"hub",\n'
+    '    "tool":{"type":"cylinder","params":{"radius":10,"height":50},\n'
+    '           "position":{"x":0,"y":0,"z":25}}\n'
     '  }\n'
     '  ],\n'
     '  "material":null,"tolerances":null,"surface_finish":null,\n'
@@ -278,17 +284,20 @@ STRUCTURED_PROMPT = (
     '  "confidence":"high|medium|low","warnings":[]\n'
     "}\n\n"
     "RULES:\n"
-    "1. Start from largest additive body (e.g. base plate) as a box/cylinder.\n"
-    "2. Add more bodies on top (union implied unless type=subtract).\n"
-    "3. Use subtract for holes, bores, pockets, cuts.\n"
-    "4. Use extrude for ribs, gussets, non-primitive shapes.\n"
-    "5. position=center of each body. origin per coordinate_system.\n"
-    "6. All dimensions in the declared unit. Use null if unknown.\n"
+    "1. Start with the LARGEST additive body. Build outwards.\n"
+    "2. Use subtract for ALL holes, bores, pockets, cuts, grooves.\n"
+    "3. Use revolve for axially symmetric parts (shafts, flanges, pulleys).\n"
+    "4. Use sweep for pipes/tubes along curved paths.\n"
+    "5. Use loft for transitions between different profiles.\n"
+    "6. For complex freeform surfaces, threads, gears, springs, lattice, organic shapes: "
+    'use type=custom with cadquery code. qwen3.6-plus KNOWS cadquery and can write valid code.\n'
+    "7. position=center of body's bounding box. Use coordinate_system origin as reference.\n"
+    "8. All dimensions in the declared unit. Use null if unknown.\n"
+    "9. Be CONCISE — prefer primitives when they fit. Only use custom when truly needed.\n"
     "For non-technical images: "
     '{"type":"photo|screenshot|other","description":"...","confidence":"...","warnings":[]}'
-    "\nCRITICAL: Output PURE JSON only. No markdown, no extra text."
+    "\nCRITICAL: Pure JSON. No markdown fences. No extra text."
 )
-
 def _make_prompt(user_question="", output_format="auto"):
     """Combine expert system prompt with user's specific question.
     output_format: "auto" (AI decides), "json" (force JSON), "text" (plain text)"""
