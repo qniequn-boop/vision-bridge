@@ -3,6 +3,7 @@
   <img src="https://img.shields.io/badge/MCP-Server-green?style=flat-square" alt="MCP">
   <img src="https://img.shields.io/badge/Qwen3.6--Plus-Vision-orange?style=flat-square" alt="Qwen">
   <img src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square" alt="License">
+  <img src="https://img.shields.io/badge/Smithery-Deploy-purple?style=flat-square" alt="Smithery">
 </p>
 
 <p align="center">
@@ -24,7 +25,7 @@ Text-only AI  ──MCP──>  vision-bridge  ──API──>  qwen3.6-plus
 
 ```bash
 pip install mcp
-git clone https://github.com/your-username/vision-bridge.git
+git clone https://github.com/qniequn-boop/vision-bridge.git
 ```
 
 ### 2. Set API Key
@@ -162,3 +163,27 @@ python -m vision_bridge.cli image.png "What is this part?"
 ## License
 
 MIT
+
+
+## Troubleshooting
+
+### MCP server not loading (Codex / Claude)
+
+**Symptom:** `analyze_image` tool not available after restart.
+
+**Cause:** TOML config backslash escaping. Paths like `C:\pathision_bridge\server.py` are parsed as escape sequences (e.g., `` = vertical tab). This breaks the entire config, causing Codex to fail on startup.
+
+**Fix:** Always use forward slashes in TOML args:
+
+```toml
+[mcp_servers.vision]
+type = "stdio"
+command = "python"
+args = ["C:/Users/you/project/src/vision_bridge/server.py"]
+env = { DASHSCOPE_API_KEY = "sk-your-key" }
+```
+
+**Other common issues:**
+- Non-ASCII/Chinese characters in file paths — TOML parsers may mangle encoding
+- Python not on PATH — verify with `python --version`
+- API key not set — verify with `echo %DASHSCOPE_API_KEY%` (Windows) or `echo $DASHSCOPE_API_KEY` (macOS/Linux)

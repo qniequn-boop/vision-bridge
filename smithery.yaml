@@ -1,0 +1,26 @@
+﻿version: "1.0"
+name: "vision-bridge"
+description: "Multimodal vision bridge for text-only AI agents"
+repository: "https://github.com/qniequn-boop/vision-bridge"
+license: "MIT"
+
+runtime:
+  type: "python"
+  entrypoint: "src/vision_bridge/server.py"
+  python: ">=3.10"
+
+tools:
+  - name: "vision"
+    description: "Give text-only AI the ability to see images via Qwen/OpenAI multimodal models"
+    config:
+      type: "stdio"
+      command: "python"
+      args: ["src/vision_bridge/server.py"]
+    env:
+      - name: "DASHSCOPE_API_KEY"
+        description: "DashScope API key (Alibaba Cloud)"
+        required: true
+      - name: "VISION_PROVIDER"
+        description: "Provider: qwen (default) or openai"
+        required: false
+        default: "qwen"

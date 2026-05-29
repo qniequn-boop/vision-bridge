@@ -3,6 +3,7 @@
   <img src="https://img.shields.io/badge/MCP-Server-green?style=flat-square" alt="MCP">
   <img src="https://img.shields.io/badge/Qwen3.6--Plus-Vision-orange?style=flat-square" alt="Qwen">
   <img src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square" alt="License">
+  <img src="https://img.shields.io/badge/Smithery-Deploy-purple?style=flat-square" alt="Smithery">
 </p>
 
 <p align="center">
@@ -24,7 +25,7 @@
 
 ```bash
 pip install mcp
-git clone https://github.com/your-username/vision-bridge.git
+git clone https://github.com/qniequn-boop/vision-bridge.git
 ```
 
 ### 2. 配置 API Key
@@ -160,3 +161,27 @@ python -m vision_bridge.cli image.png "这是什么零件？"
 ## 许可证
 
 MIT
+
+
+## 故障排查
+
+### MCP 服务未加载
+
+**症状：** 重启后找不到 `analyze_image` 工具。
+
+**原因：** TOML 配置中反斜杠被当作转义符。比如 `ision_bridge` 中的 `` 被解析为垂直制表符，导致整个配置文件解析失败，Codex 无法启动。
+
+**修复：** 在 TOML 配置中始终使用正斜杠：
+
+```toml
+[mcp_servers.vision]
+type = "stdio"
+command = "python"
+args = ["C:/Users/you/project/src/vision_bridge/server.py"]
+env = { DASHSCOPE_API_KEY = "sk-your-key" }
+```
+
+**其他常见问题：**
+- 文件路径中不要包含中文或非 ASCII 字符 — TOML 解析器可能乱码
+- Python 不在 PATH 中 — 用 `python --version` 验证
+- API Key 未设置 — 用 `echo %DASHSCOPE_API_KEY%` (Windows) 验证
