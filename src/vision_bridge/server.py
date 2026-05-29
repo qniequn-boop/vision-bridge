@@ -33,7 +33,7 @@ PROVIDERS = {
             "text-embedding-v3": {"caps":["embed"],"ctx":8192,"in_m":0.0007,"dims":1024},
         },
         "aliases": {
-            "smart":"qwen3.6-plus","fast":"qwen3.6-plus","cheap":"qwen-turbo",
+            "smart":"qwen3.6-plus","fast":"qwen-plus","cheap":"qwen-turbo",
             "vision":"qwen3.6-plus","vision-max":"qwen3-vl-235b-a22b-instruct",
             "embed":"text-embedding-v3"
         }
@@ -241,6 +241,12 @@ def analyze_image(image_path: str, question: str = "", model: str = "vision") ->
     except Exception as e:
         return f"[READ_ERROR] {e}"
 
+    # cost cap check
+    max_cost = float(os.getenv("VISION_MAX_COST_USD", "0.50"))
+    est_cost = _estimate_cost(model_id, 3000, 2000)
+    if est_cost > max_cost:
+        return f"[COST_CAP] Estimated ${est_cost:.4f} exceeds limit ${max_cost:.2f}. Set VISION_MAX_COST_USD higher."
+
     # api call
     prompt = _make_prompt(question)
     body = {
@@ -264,12 +270,15 @@ def analyze_image(image_path: str, question: str = "", model: str = "vision") ->
     out_tok = r.get("usage",{}).get("completion_tokens", len(content)//4 if content else 0)
     # warn if truncated
     trunc_warn = ""
-    if len(r.get("choices",[{}])[0].get("finish_reason","")) == "length":
+    if r.get("choices",[{}])[0].get("finish_reason","") == "length":
         trunc_warn = " [WARNING: response truncated, increase max_tokens]"
     cost = _estimate_cost(model_id, in_tok, out_tok)
     total_ms = int((time.time()-t0)*1000)
 
-    _cache_rw(ck, {"content": content})
+    if content.startswith("[ERROR:") or content.startswith("[WARNING:"):
+        pass  # never cache error/warning responses
+    else:
+        _cache_rw(ck, {"content": content})
     _audit(tool="analyze_image", model=model_id, inputTokens=in_tok, outputTokens=out_tok,
            costUsd=round(cost,6), latencyMs=total_ms, cached=False)
 
@@ -285,7 +294,15 @@ def qwen_chat(prompt: str, model: str = "fast", system: str = "") -> str:
     try:
         r = _api("/compatible-mode/v1/chat/completions",
                  {"model":model_id,"messages":messages,"max_tokens":2000})
-        return _safe_content(r)
+        content = _safe_content(r)
+        _audit(tool="qwen_chat", model=model_id,
+               inputTokens=r.get("usage",{}).get("prompt_tokens",0),
+               outputTokens=r.get("usage",{}).get("completion_tokens",0),
+               costUsd=round(_estimate_cost(model_id,
+                   r.get("usage",{}).get("prompt_tokens",0),
+                   r.get("usage",{}).get("completion_tokens",0)),6),
+               cached=False)
+        return content
     except RuntimeError as e:
         return str(e)
 
