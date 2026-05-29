@@ -127,6 +127,25 @@ def _api(path, body, timeout=120):
             raise RuntimeError(f"[NETWORK] {e.reason}")
     raise RuntimeError("[TIMEOUT] All retries exhausted")
 
+
+def _parse_json_response(raw):
+    """Try to extract JSON from model response. Fallback gracefully."""
+    if not raw:
+        return None
+    text = raw.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+        text = text.strip()
+    start = text.find("{")
+    end = text.rfind("}")
+    if start >= 0 and end > start:
+        try:
+            return json.loads(text[start:end+1])
+        except json.JSONDecodeError:
+            pass
+    return None
+
 def _safe_content(r):
     """Safely extract content from API response. Never crashes."""
     try:
@@ -204,16 +223,69 @@ SYSTEM_PROMPT = (
 )
 
 
-def _make_prompt(user_question=""):
-    """Combine expert system prompt with user's specific question."""
+
+
+STRUCTURED_PROMPT = (
+    "\n\n"
+    "=== STRUCTURED OUTPUT MODE ===\n"
+    "Output ONLY valid JSON, no markdown fences, no extra text:\n\n"
+    "{\n"
+    '  "type": "engineering_drawing|photo|screenshot|diagram|sketch|other",\n'
+    '  "description": "brief human-readable summary",\n'
+    '  "drawing_type": "mechanical|pcb|architectural|p_and_id|electrical|hydraulic|'
+    'welding|casting|sheet_metal|isometric|hand_sketch|scanned|physical_photo|null",\n'
+    '  "standard": "ISO|ANSI|JIS|GOST|DIN|unknown|null",\n'
+    '  "dimensions": {\n'
+    '    "unit": "mm|inch|unknown|null",\n'
+    '    "overall": {"width": null, "height": null, "depth": null, "diameter": null},\n'
+    '    "features": [{"name": "string", "type": "through_hole|blind_hole|tapped_hole|'
+    'countersunk|counterbore|slot|groove|chamfer|fillet|thread|boss|rib|pocket|other", '
+    '"diameter": null, "depth": null, "length": null, "width": null, '
+    '"quantity": null, "thread_spec": null, "tolerance": null}],\n'
+    '    "wall_thickness": null,\n'
+    '    "angles": [{"name": "string", "degrees": null}]\n'
+    '  },\n'
+    '  "material": null,\n'
+    '  "tolerances": null,\n'
+    '  "surface_finish": null,\n'
+    '  "title_block": {"part_name": null, "drawing_number": null, '
+    '"revision": null, "scale": null},\n'
+    '  "confidence": "high|medium|low",\n'
+    '  "warnings": []\n'
+    "}\n\n"
+    "For casual photos, screenshots, non-technical images: "
+    'output {"type":"photo"|"screenshot"|"other", "description":"...", '
+    '"confidence":"...", "warnings":[]} and nothing else.\n'
+    "CRITICAL: Pure JSON only. Start with {, end with }. NO markdown fences."
+)
+
+
+def _make_prompt(user_question="", output_format="auto"):
+    """Combine expert system prompt with user's specific question.
+    output_format: "auto" (AI decides), "json" (force JSON), "text" (plain text)"""
+    base = SYSTEM_PROMPT
+    if output_format == "json":
+        base += STRUCTURED_PROMPT
+    elif output_format == "auto":
+        base += (
+            "\n\n=== OUTPUT FORMAT DECISION ===\n"
+            "If this image is an engineering drawing, technical diagram, blueprint, "
+            "mechanical part drawing, PCB layout, architectural plan, P&ID, or any "
+            "technical document with dimensions/measurements: output PURE JSON "
+            "(no markdown fences, no extra text)\n"
+            + STRUCTURED_PROMPT +
+            "\nOtherwise (casual photo, screenshot, artwork): "
+            "describe naturally in plain text following the OUTPUT FORMAT rules above."
+        )
     if user_question:
-        return SYSTEM_PROMPT + "\n\nUSER QUESTION:\n" + user_question + "\n\nAnswer the user question with expert precision."
-    return SYSTEM_PROMPT + "\n\nDescribe this image completely."
+        return base + "\n\nUSER QUESTION:\n" + user_question + "\n\nAnswer the user question with expert precision."
+    return base + "\n\nDescribe this image completely."
 
 @mcp.tool()
-def analyze_image(image_path: str, question: str = "", model: str = "vision") -> str:
+def analyze_image(image_path: str, question: str = "", model: str = "vision", format: str = "auto") -> str:
     """Analyze image with vision AI. Supports engineering drawings, screenshots, photos.
-    Args: image_path (absolute path), question (optional), model (alias or ID)"""
+    Args: image_path (absolute path), question (optional), model (alias or ID),
+          format ("auto"=AI decides JSON/text, "json"=force structured JSON, "text"=plain text)"""
     t0 = time.time()
     model_id = _resolve(model)
     spec = _spec(model)
@@ -248,7 +320,7 @@ def analyze_image(image_path: str, question: str = "", model: str = "vision") ->
         return f"[COST_CAP] Estimated ${est_cost:.4f} exceeds limit ${max_cost:.2f}. Set VISION_MAX_COST_USD higher."
 
     # api call
-    prompt = _make_prompt(question)
+    prompt = _make_prompt(question, format)
     body = {
         "model": model_id,
         "messages": [{"role":"user","content":[
@@ -266,6 +338,11 @@ def analyze_image(image_path: str, question: str = "", model: str = "vision") ->
                costUsd=0, latencyMs=int((time.time()-t0)*1000), cached=False, error=str(e))
         return str(e)
 
+    # Try structured JSON parsing for json/auto modes
+    parsed_json = None
+    if format in ("json", "auto"):
+        parsed_json = _parse_json_response(content)
+
     in_tok = r.get("usage",{}).get("prompt_tokens", 500)
     out_tok = r.get("usage",{}).get("completion_tokens", len(content)//4 if content else 0)
     # warn if truncated
@@ -282,8 +359,14 @@ def analyze_image(image_path: str, question: str = "", model: str = "vision") ->
     _audit(tool="analyze_image", model=model_id, inputTokens=in_tok, outputTokens=out_tok,
            costUsd=round(cost,6), latencyMs=total_ms, cached=False)
 
-    return f"{content}{trunc_warn}\n\n---\n_{model_id} · {in_tok}↑{out_tok}↓ · ${cost:.4f} · {total_ms}ms_"
-
+    # Build output
+    footer = f"\n\n---\n_{model_id} · {in_tok}↑{out_tok}↓ · ${cost:.4f} · {total_ms}ms_"
+    if parsed_json:
+        result = json.dumps(parsed_json, ensure_ascii=False, indent=2)
+        return result + footer
+    if format == "json":
+        return f"[JSON_PARSE_FAILED] Model did not return valid JSON. Raw response:\n\n{content}{trunc_warn}{footer}"
+    return f"{content}{trunc_warn}{footer}"
 @mcp.tool()
 def qwen_chat(prompt: str, model: str = "fast", system: str = "") -> str:
     """Chat with text model. Aliases: smart/fast/cheap."""
