@@ -13,7 +13,7 @@ mcp = FastMCP("vision-bridge")
 DATA_DIR = pathlib.Path.home() / ".vision-bridge"
 AUDIT_LOG = DATA_DIR / "log.jsonl"
 CACHE_DIR = DATA_DIR / "cache"
-MAX_RETRIES = 2
+MAX_RETRIES = 1
 CACHE_TTL_S = 86400
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 CACHE_DIR.mkdir(exist_ok=True)
@@ -96,7 +96,7 @@ def _mime_type(path):
     return {"png":"image/png","jpg":"image/jpeg","jpeg":"image/jpeg",
             "webp":"image/webp","gif":"image/gif","bmp":"image/bmp"}.get(ext,"image/jpeg")
 
-def _api(path, body, timeout=90):
+def _api(path, body, timeout=80):
     url = f"{CFG['base']}{path}"
     data = json.dumps(body).encode()
     for attempt in range(MAX_RETRIES):
@@ -293,7 +293,7 @@ def analyze_image(image_path: str, question: str = "", model: str = "vision", fo
         return f"[CAPABILITY] {model_id} lacks vision capability"
 
     # cache
-    ck = _cache_key("analyze", image_path, question, model_id)
+    ck = _cache_key("analyze", image_path, question, model_id, format)
     cached = _cache_rw(ck)
     if cached:
         _audit(tool="analyze_image", model=model_id, inputTokens=0, outputTokens=0,
@@ -327,11 +327,11 @@ def analyze_image(image_path: str, question: str = "", model: str = "vision", fo
             {"type":"image_url","image_url":{"url":f"data:{mime};base64,{b64}"}},
             {"type":"text","text":prompt}
         ]}],
-        "max_tokens": 2000 if format == "text" else 4000
+        "max_tokens": 500 if format == "text" else 1500
     }
 
     try:
-        r = _api("/compatible-mode/v1/chat/completions", body, timeout=90)
+        r = _api("/compatible-mode/v1/chat/completions", body, timeout=80)
         content = _safe_content(r)
     except RuntimeError as e:
         _audit(tool="analyze_image", model=model_id, inputTokens=0, outputTokens=0,
