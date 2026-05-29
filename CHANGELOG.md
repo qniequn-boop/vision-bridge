@@ -1,5 +1,21 @@
 ﻿# Changelog
 
+## [1.1.0] - 2026-05-29
+
+### Added
+- **Structured JSON output**: `analyze_image` now supports `format` parameter (`auto`/`json`/`text`)
+- **`_parse_json_response()`**: Robust JSON extraction from model responses (handles markdown fences)
+- **`STRUCTURED_PROMPT`**: Dual-mode prompt — engineering drawings get structured JSON, casual photos get natural text
+- **Engineering drawing schema**: type, drawing_type, standard, dimensions (overall + features), material, tolerances, surface_finish, title_block, confidence, warnings
+- **`format="auto"`** (default): AI auto-decides whether to output JSON or text based on image content
+- **`format="json"`**: Forces structured JSON output with `[JSON_PARSE_FAILED]` fallback
+- **`format="text"`**: Legacy plain text mode (current behavior preserved)
+
+### Changed
+- `_make_prompt()` now accepts `output_format` parameter to inject structured prompt
+- Response caching differentiates JSON vs text results correctly
+
+
 ## [1.0.1] - 2026-05-29
 
 ### Fixed
