@@ -1,5 +1,17 @@
 ﻿# Changelog
 
+## [1.0.1] - 2026-05-29
+
+### Fixed
+- **Truncation detection**: `len(finish_reason)` → `finish_reason` (bug made it always False)
+- **Error caching**: `[ERROR:*]` and `[WARNING:*]` responses no longer cached for 24h
+- **VISION_MAX_COST_USD**: now actually enforced before API calls (was documented but not implemented)
+- **smart/fast aliases**: `fast` now uses `qwen-plus` instead of duplicating `qwen3.6-plus`
+- **qwen_chat audit**: text chat calls now logged to audit trail (was only analyze_image)
+- **pyproject.toml**: fixed `build-backend` from invalid `setuptools.backends._legacy:_Backend` to `setuptools.build_meta`
+- **pyproject.toml**: replaced `your-username` placeholder with `qniequn-boop`
+
+
 ## [1.0.0] - 2026-05-29
 
 ### Added
