@@ -1,6 +1,6 @@
 ﻿[build-system]
 requires = ["setuptools>=68.0"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "vision-bridge-mcp"
@@ -25,9 +25,9 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/your-username/vision-bridge"
-Repository = "https://github.com/your-username/vision-bridge"
-Issues = "https://github.com/your-username/vision-bridge/issues"
+Homepage = "https://github.com/qniequn-boop/vision-bridge"
+Repository = "https://github.com/qniequn-boop/vision-bridge"
+Issues = "https://github.com/qniequn-boop/vision-bridge/issues"
 
 [project.scripts]
 vision-bridge = "vision_bridge.server:main"
