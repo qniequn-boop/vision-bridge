@@ -227,38 +227,67 @@ SYSTEM_PROMPT = (
 
 STRUCTURED_PROMPT = (
     "\n\n"
-    "=== STRUCTURED OUTPUT MODE ===\n"
-    "Output ONLY valid JSON, no markdown fences, no extra text:\n\n"
+    "=== CONSTRUCTIVE SOLID GEOMETRY (CSG) OUTPUT ===\n"
+    "Output ONLY this JSON. Express the part as additive/subtractive bodies.\n"
     "{\n"
-    '  "type": "engineering_drawing|photo|screenshot|diagram|sketch|other",\n'
-    '  "description": "brief human-readable summary",\n'
-    '  "drawing_type": "mechanical|pcb|architectural|p_and_id|electrical|hydraulic|'
-    'welding|casting|sheet_metal|isometric|hand_sketch|scanned|physical_photo|null",\n'
-    '  "standard": "ISO|ANSI|JIS|GOST|DIN|unknown|null",\n'
-    '  "dimensions": {\n'
-    '    "unit": "mm|inch|unknown|null",\n'
-    '    "overall": {"width": null, "height": null, "depth": null, "diameter": null},\n'
-    '    "features": [{"name": "string", "type": "through_hole|blind_hole|tapped_hole|'
-    'countersunk|counterbore|slot|groove|chamfer|fillet|thread|boss|rib|pocket|other", '
-    '"diameter": null, "depth": null, "length": null, "width": null, '
-    '"quantity": null, "thread_spec": null, "tolerance": null}],\n'
-    '    "wall_thickness": null,\n'
-    '    "angles": [{"name": "string", "degrees": null}]\n'
+    '  "type":"engineering_drawing|photo|screenshot|other",'
+    '"description":"...",'
+    '"drawing_type":"mechanical|pcb|architectural|p_and_id|electrical|hydraulic|'
+    'welding|casting|sheet_metal|isometric|hand_sketch|scanned|physical_photo|null",'
+    '"standard":"ISO|ANSI|JIS|GOST|DIN|unknown|null",'
+    '"scale":"...",'
+    '"unit":"mm|inch|unknown",'
+    '"coordinate_system":{"origin":"bottom_center|bottom_left|part_center|...",'
+    '"x_axis_description":"width","y_axis_description":"depth",'
+    '"z_axis_description":"height/up"},'
+    '"bodies":[\n'
+    '  // PRIMITIVES: type=box|cylinder|sphere|cone|wedge\n'
+    '  // box: {"width","depth","height"}\n'
+    '  // cylinder: {"radius","height"}  (axis=z by default)\n'
+    '  // sphere: {"radius"}\n'
+    '  // cone: {"radius_bottom","radius_top","height"}\n'
+    '  {\n'
+    '    "id":"unique_name",\n'
+    '    "type":"box",\n'
+    '    "params":{"width":100,"depth":40,"height":10},\n'
+    '    "position":{"x":0,"y":0,"z":0},\n'
+    '    "rotation":{"axis":"z|y|x","degrees":0}\n'
     '  },\n'
-    '  "material": null,\n'
-    '  "tolerances": null,\n'
-    '  "surface_finish": null,\n'
-    '  "title_block": {"part_name": null, "drawing_number": null, '
-    '"revision": null, "scale": null},\n'
-    '  "confidence": "high|medium|low",\n'
-    '  "warnings": []\n'
+    '  // BOOLEAN: type=subtract|union|intersect\n'
+    '  {\n'
+    '    "id":"hole_1",\n'
+    '    "type":"subtract",\n'
+    '    "target":"base_plate",\n'
+    '    "tool":{"type":"cylinder","params":{"radius":5,"height":10},\n'
+    '           "position":{"x":10,"y":20,"z":0}},\n'
+    '    "pattern":{"count":2,"direction":"x","spacing":80}\n'
+    '  },\n'
+    '  // EXTRUSION: type=extrude (2D profile -> 3D)\n'
+    '  {\n'
+    '    "id":"rib",\n'
+    '    "type":"extrude",\n'
+    '    "profile":"triangle|rectangle|custom_polygon",\n'
+    '    "profile_params":{"base":15,"height":62},\n'
+    '    "thickness":8,\n'
+    '    "position":{"x":15,"y":16,"z":10}\n'
+    '  }\n'
+    '  ],\n'
+    '  "material":null,"tolerances":null,"surface_finish":null,\n'
+    '  "title_block":{"part_name":null,"drawing_number":null,'
+    '"revision":null,"scale":null},\n'
+    '  "confidence":"high|medium|low","warnings":[]\n'
     "}\n\n"
-    "For casual photos, screenshots, non-technical images: "
-    'output {"type":"photo"|"screenshot"|"other", "description":"...", '
-    '"confidence":"...", "warnings":[]} and nothing else.\n'
-    "CRITICAL: Pure JSON only. Start with {, end with }. NO markdown fences."
+    "RULES:\n"
+    "1. Start from largest additive body (e.g. base plate) as a box/cylinder.\n"
+    "2. Add more bodies on top (union implied unless type=subtract).\n"
+    "3. Use subtract for holes, bores, pockets, cuts.\n"
+    "4. Use extrude for ribs, gussets, non-primitive shapes.\n"
+    "5. position=center of each body. origin per coordinate_system.\n"
+    "6. All dimensions in the declared unit. Use null if unknown.\n"
+    "For non-technical images: "
+    '{"type":"photo|screenshot|other","description":"...","confidence":"...","warnings":[]}'
+    "\nCRITICAL: Output PURE JSON only. No markdown, no extra text."
 )
-
 
 def _make_prompt(user_question="", output_format="auto"):
     """Combine expert system prompt with user's specific question.
