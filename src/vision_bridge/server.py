@@ -68,9 +68,9 @@ PROVIDERS = {
 
         "aliases": {
 
-            "smart":"qwen3.6-plus","fast":"qwen-plus","cheap":"qwen-turbo",
+            "smart":"qwen-vl-max-latest","fast":"qwen-plus","cheap":"qwen-turbo",
 
-            "vision":"qwen3.6-plus","vision-max":"qwen3-vl-235b-a22b-instruct",
+            "vision":"qwen-vl-max-latest","vision-max":"qwen3-vl-235b-a22b-instruct",
 
             "embed":"text-embedding-v3"
 
